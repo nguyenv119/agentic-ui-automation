@@ -1,0 +1,32 @@
+{
+  "name": "agentic-ui-automation",
+  "version": "1.0.0",
+  "description": "A generalized browser automation agent that executes natural-language UI tasks across live web apps",
+  "homepage": "https://github.com/nguyenv119/agentic-ui-automation#readme",
+  "bugs": {
+    "url": "https://github.com/nguyenv119/agentic-ui-automation/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nguyenv119/agentic-ui-automation.git"
+  },
+  "license": "ISC",
+  "author": "Long Nguyen",
+  "type": "commonjs",
+  "main": "index.ts",
+  "scripts": {
+    "dev": "nodemon --exec ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
