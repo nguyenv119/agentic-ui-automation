@@ -51,7 +51,7 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
     logger.info(`Executing step ${step.step}: ${step.description}`);
     
     await executeStep(page, step);
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
     
     if (step.expectSelector) {
       try {
@@ -72,6 +72,7 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
 
     let screenshot: string | undefined;
     if (step.capture || changed) {
+      await page.waitForTimeout(500);
       const filename = `step_${step.step}.png`;
       const screenshotPath = path.join(outputDir, filename);
       await takeScreenshot(page, screenshotPath);

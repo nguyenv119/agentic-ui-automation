@@ -7,7 +7,7 @@ export const StepSchema = z.object({
   selector: z.string().nullable(),
   fallbackSelectors: z.array(z.string()).optional(),
   value: z.string().nullable().optional(),
-  capture: z.boolean().default(true),
+  capture: z.boolean().optional().nullable(),
   tags: z.array(z.string()).optional(),
   expectsNavigation: z.boolean().optional(),
   expectSelector: z.string().optional(),

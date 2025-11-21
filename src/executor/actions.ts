@@ -52,7 +52,7 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
         throw new Error("Click step requires a selector");
       }
       await page.click(step.selector);
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(1000);
       return;
     }
 
@@ -62,7 +62,7 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
       if (value === "{Enter}") {
         logger.debug(`Pressing Enter key`);
         await page.keyboard.press("Enter");
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(500);
         return;
       }
 
@@ -70,20 +70,20 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
       if (targetSelector) {
         await page.waitForSelector(targetSelector, { state: "visible", timeout: 3000 });
         await page.click(targetSelector);
-        await page.waitForTimeout(100);
+        await page.waitForTimeout(500);
         logger.debug(`Typing "${value}" into ${targetSelector}`);
       } else {
         logger.debug(`Typing "${value}" into currently focused element`);
       }
       await page.keyboard.type(value, { delay: 80 });
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(500);
       return;
     }
 
     case "wait": {
       if (step.selector) {
         await page.waitForSelector(step.selector, { timeout: 10000 });
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(500);
       } else {
         await page.waitForTimeout(500);
       }
