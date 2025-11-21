@@ -1,8 +1,9 @@
 import express from "express";
+
 import { generatePlan } from "./planner/planner";
 import { logger } from "./utils/logger";
 import { runPlan } from "./executor/executor";
-import { initDataset, writeWorkflowJSON } from "./dataset/writer";
+import { initStorage, writeWorkflowJSON } from "./dataset/writer";
 
 export function createServer() {
   const app = express();
@@ -15,13 +16,13 @@ export function createServer() {
 
   app.post("/run_workflow", async (req, res) => {
     const { agentATask } = req.body;
-    logger.info(`Received task from Agent A: ${agentATask}`);
     const agentBPlan = await generatePlan(agentATask);
-    res.json({ success: true, agentBPlan });
-    const dir = initDataset();
-    const steps = await runPlan();
-    writeWorkflowJSON(dir, { agentATask, agentBPlan, steps });
-    res.json({ success: true, dir, steps });
+    const { workflowFile, screenshotsDir } = initStorage();
+
+    const workflowOutput = await runPlan(agentBPlan, screenshotsDir);
+
+    writeWorkflowJSON(workflowFile, workflowOutput.steps);
+    res.json({ success: true, workflowOutput });
   });
 
   return app;

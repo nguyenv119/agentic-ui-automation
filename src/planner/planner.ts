@@ -1,68 +1,68 @@
-import { PlanSchema, Plan } from "./schema";
-import { getOpenAIClient } from "../config/openai";
+import { Plan } from "./schema";
 import { logger } from "../utils/logger";
-import { cleanJsonResponse } from "../utils/helpers";
 
 export async function generatePlan(task: string): Promise<Plan> {
-  const openai = getOpenAIClient();
-  const prompt = `
-    You are a UI workflow planner. Given the task description below, output a JSON plan.
+  logger.info(`[Planner] Received task: ${task}`);
 
-    Task:
-    ${task}
-
-    Rules:
-    - Use only actions: goto, click, type, wait
-    - DO NOT include explanations outside JSON
-
-    Output ONLY valid JSON that matches this schema:
-    {
-      "steps": [
-        {
-          "step": 1,
-          "description": "Navigate to Linear project list",
-          "action": "goto"
-        }
-      ]
-    }
-  `;
-
-  try {
-    logger.debug("Requesting plan from OpenAI");
-    const res = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }]
-    });
-    logger.debug("OpenAI responded");
-
-    const rawContent = res.choices[0].message?.content || "{}";
-    
-    const cleanedContent = cleanJsonResponse(rawContent as string);
-    logger.debug("Cleaned JSON content");
-    
-    let json;
-    try {
-      json = JSON.parse(cleanedContent);
-    } catch (parseError) {
-      logger.error("Failed to parse JSON from OpenAI response", {
-        rawContent,
-        cleanedContent,
-        error: parseError
-      });
-      throw new Error(`Invalid JSON response from OpenAI: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
-    }
-    
-    logger.debug("Parsed JSON from OpenAI");
-
-    const { success, data, error } = PlanSchema.safeParse(json);
-    if (!success) {
-      logger.error("Invalid Zod schema for plan", error);
-      throw new Error("Invalid Zod schema for plan");
-    }
-    logger.debug("Plan generated");
-    return data;
-  } catch (error) {
-    logger.error("Error generating plan", error);
-    throw error;
-  }
+  return {
+    app: "notion",
+    task: "Create a database table in Notion using /table",
+    steps: [
+      {
+        step: 1,
+        action: "goto",
+        selector: "https://www.notion.so/new",
+        description: "Go to Notion home workspace",
+        value: null,
+        capture: true,
+      },
+      {
+        step: 2,
+        action: "type",
+        description: "Type the 'Demo' page title",
+        selector: null,
+        value: "Demo",
+        capture: true,
+      },
+      {
+        step: 3,
+        action: "type",
+        description: "Press Enter to move cursor into body",
+        selector: null,
+        value: "{Enter}",
+        capture: true,
+      },
+      {
+        step: 4,
+        action: "wait",
+        description: "Small wait for cursor to settle in body",
+        selector: null,
+        capture: false,
+      },
+      {
+        step: 5,
+        action: "type",
+        description: "Type the `/table` slash command",
+        selector: null,
+        value: "/table",
+        capture: true,
+      },
+      {
+        step: 6,
+        action: "wait",
+        description: "Wait for slash menu to appear",
+        selector: null,
+        capture: true,
+      },
+      {
+        step: 7,
+        action: "type",
+        description: "Press Enter to select Table from menu",
+        selector: null,
+        value: "{Enter}",
+        capture: true,
+        expectSelector: "table, [role='table'], [class*='notion-table']",
+      },
+    ],
+  };
 }
