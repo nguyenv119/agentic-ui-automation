@@ -90,6 +90,9 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
     logger.debug(`Completed step ${step.step}`);
   }
 
+  logger.info(`Closing browser`);
+  await browser.close();
+
   const workflowPath = path.join(outputDir, "agent_b_workflow.json");
   await fs.writeFile(
     workflowPath,
@@ -98,6 +101,5 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
   );
   logger.info(`Workflow saved to ${workflowPath}`);
 
-  await browser.close();
   return { steps: executedSteps };
 }
