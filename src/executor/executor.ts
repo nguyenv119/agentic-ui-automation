@@ -13,7 +13,6 @@ export type ExecutedStep = {
   step: number;
   action: "goto" | "click" | "type" | "wait";
   description: string;
-  url: string;
   screenshot?: string;
 };
 
@@ -46,6 +45,7 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
   const page = await context.newPage();
   let prevHash: string | null = null;
   const executedSteps: ExecutedStep[] = [];
+  const screenshotHashes: string[] = [];
 
   for (const step of plan.steps) {
     logger.info(`Executing step ${step.step}: ${step.description}`);
@@ -71,19 +71,19 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
     prevHash = hash;
 
     let screenshot: string | undefined;
-    if (step.capture || changed) {
+    if ((step.capture || changed) && !screenshotHashes.includes(hash)) {
       await page.waitForTimeout(500);
       const filename = `step_${step.step}.png`;
       const screenshotPath = path.join(outputDir, filename);
       await takeScreenshot(page, screenshotPath);
       screenshot = filename;
+      screenshotHashes.push(hash);
     }
 
     executedSteps.push({
       step: step.step,
       description: step.description,
       action: step.action,
-      url: page.url(),
       screenshot,
     });
     

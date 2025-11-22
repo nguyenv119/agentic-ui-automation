@@ -51,30 +51,41 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
       if (!step.selector) {
         throw new Error("Click step requires a selector");
       }
-      await page.click(step.selector);
-      await page.waitForTimeout(1000);
-      return;
+      
+      const selectors = [step.selector, ...(step.fallbackSelectors || [])].filter(Boolean) as string[];
+      
+      let lastError: Error | null = null;
+      for (const sel of selectors) {
+        try {
+          await page.waitForSelector(sel, { state: "visible", timeout: 3000 });
+          await page.click(sel, { timeout: 5000 });
+          logger.debug(`Clicked: ${sel}`);
+          await page.waitForTimeout(1000);
+          return;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          logger.debug(`Failed to click ${sel}: ${lastError.message}`);
+        }
+      }
+      
+      throw new Error(`Failed to click: ${selectors.join(", ")}`);
     }
 
     case "type": {
       const value = step.value ?? "";
 
       if (value === "{Enter}") {
-        logger.debug(`Pressing Enter key`);
         await page.keyboard.press("Enter");
         await page.waitForTimeout(500);
         return;
       }
 
-      const targetSelector = step.selector;
-      if (targetSelector) {
-        await page.waitForSelector(targetSelector, { state: "visible", timeout: 3000 });
-        await page.click(targetSelector);
-        await page.waitForTimeout(500);
-        logger.debug(`Typing "${value}" into ${targetSelector}`);
-      } else {
-        logger.debug(`Typing "${value}" into currently focused element`);
+      if (step.selector) {
+        await page.waitForSelector(step.selector, { timeout: 3000 });
+        await page.click(step.selector);
+        await page.waitForTimeout(200);
       }
+      
       await page.keyboard.type(value, { delay: 80 });
       await page.waitForTimeout(500);
       return;
@@ -82,8 +93,16 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
 
     case "wait": {
       if (step.selector) {
-        await page.waitForSelector(step.selector, { timeout: 10000 });
-        await page.waitForTimeout(500);
+        try {
+          await page.waitForSelector(step.selector, { timeout: 10000 });
+          await page.waitForTimeout(500);
+        } catch (error) {
+          logger.warn(
+            `Wait selector not found: ${step.selector}. Continuing anyway.`,
+            error instanceof Error ? error.message : String(error)
+          );
+          await page.waitForTimeout(500);
+        }
       } else {
         await page.waitForTimeout(500);
       }

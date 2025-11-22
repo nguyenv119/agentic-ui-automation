@@ -1,61 +1,108 @@
-import { Plan } from "./schema";
+import { Plan, PlanSchema } from "./schema";
 import { logger } from "../utils/logger";
+import { getOpenAIClient } from "../config/openai";
+import { OPENAI_MODEL_DEFAULT, PLANNER_PROMPT, SYSTEM_PROMPT } from "../config/constants";
+import { cleanJsonResponse } from "../utils/helpers";
+
+function detectAppFromUrl(url: string): string {
+  const lower = url.toLowerCase();
+  if (lower.includes("notion.so")) return "notion";
+  if (lower.includes("linear.app")) return "linear";
+  if (lower.includes("asana.com")) return "asana";
+  return "unknown";
+}
+
+function extractUrlFromTask(task: string): { url: string; app: string } {
+  const urlRegex = /https?:\/\/[^\s]+/g;
+  const urls = task.match(urlRegex);
+  if (urls?.length) {
+    const url = urls[0];
+    return { url, app: detectAppFromUrl(url) };
+  }
+
+  const lower = task.toLowerCase();
+  if (lower.includes("notion")) {
+    return { url: "https://www.notion.so", app: "notion" };
+  }
+  if (lower.includes("linear")) {
+    return { url: "https://linear.app", app: "linear" };
+  }
+  if (lower.includes("asana")) {
+    return { url: "https://app.asana.com", app: "asana" };
+  }
+
+  return { url: "https://www.notion.so", app: "notion" };
+}
+
+async function getDocsContext(task: string, app: string): Promise<string> {
+  const openai = getOpenAIClient();
+
+  const res = await openai.chat.completions.create({
+    model: OPENAI_MODEL_DEFAULT,
+    temperature: 0,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT.replace("<<APP_NAME>>", app) },
+      { role: "user", content: `Task: ${task}` },
+    ],
+  });
+
+  return res.choices[0].message?.content ?? "";
+}
 
 export async function generatePlan(task: string): Promise<Plan> {
   logger.info(`[Planner] Received task: ${task}`);
+  const openai = getOpenAIClient();
 
-  return {
-    app: "notion",
-    task: "Create a database table in Notion using /table",
-    steps: [
-      {
-        step: 1,
-        action: "goto",
-        selector: "https://www.notion.so/new",
-        description: "Go to Notion home workspace",
-        value: null,
-      },
-      {
-        step: 2,
-        action: "type",
-        description: "Type the 'Demo' page title",
-        selector: null,
-        value: "Demo",
-      },
-      {
-        step: 3,
-        action: "type",
-        description: "Press Enter to move cursor into body",
-        selector: null,
-        value: "{Enter}",
-      },
-      {
-        step: 4,
-        action: "wait",
-        description: "Small wait for cursor to settle in body",
-        selector: null,
-      },
-      {
-        step: 5,
-        action: "type",
-        description: "Type the `/table` slash command",
-        selector: null,
-        value: "/table",
-      },
-      {
-        step: 6,
-        action: "wait",
-        description: "Wait for slash menu to appear",
-        selector: null,
-      },
-      {
-        step: 7,
-        action: "type",
-        description: "Press Enter to select Table from menu",
-        selector: null,
-        value: "{Enter}",
-        expectSelector: "table, [role='table'], [class*='notion-table']",
-      },
+  const { url: startUrl, app } = extractUrlFromTask(task);
+  logger.info(`[Planner] Detected app: ${app}, URL: ${startUrl}`);
+
+  const docsContext = await getDocsContext(task, app);
+  logger.debug(`[Planner] Docs context received: ${docsContext}`);
+
+  const plannerPrompt = PLANNER_PROMPT
+    .replace("<<APP_NAME>>", app)
+    .replace("<<START_URL>>", startUrl)
+    .replace("<<DOCS_CONTEXT>>", docsContext)
+    .concat(`\n\nTask: ${task}`);
+
+  logger.debug("[Planner] Requesting plan from OpenAI");
+
+  const res = await openai.chat.completions.create({
+    model: OPENAI_MODEL_DEFAULT,
+    temperature: 0.1,
+    messages: [
+      { role: "user", content: plannerPrompt },
     ],
-  };
+  });
+
+  logger.debug("[Planner] OpenAI responded");
+
+  const rawContent = res.choices[0].message?.content || "{}";
+  const cleanedContent = cleanJsonResponse(rawContent);
+  logger.debug("[Planner] Cleaned JSON content", { cleanedContent });
+
+  let json: unknown;
+  try {
+    json = JSON.parse(cleanedContent);
+  } catch (parseError) {
+    logger.error("[Planner] Failed to parse JSON from OpenAI response", {
+      rawContent,
+      cleanedContent,
+      error: parseError,
+    });
+    throw new Error(
+      `Invalid JSON response from OpenAI: ${
+        parseError instanceof Error ? parseError.message : String(parseError)
+      }`
+    );
+  }
+
+  const { success, data, error } = PlanSchema.safeParse(json);
+  if (!success) {
+    logger.error("[Planner] Invalid plan schema", error);
+    throw new Error("Invalid plan schema from OpenAI");
+  }
+
+  logger.info("[Planner] Plan generated successfully");
+  return data;
 }
