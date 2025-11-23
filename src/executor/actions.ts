@@ -3,39 +3,6 @@ import { Page } from "playwright";
 import { Step } from "../planner/schema";
 import { logger } from "../utils/logger";
 
-// export async function smartClick(
-//   page: Page,
-//   selector: string | null,
-//   fallbacks?: string[]
-// ): Promise<void> {
-//   const selectors = [selector, ...(fallbacks || [])].filter(
-//     Boolean
-//   ) as string[];
-
-//   if (selectors.length === 0) {
-//     throw new Error("No selectors provided for click action");
-//   }
-
-//   let lastError: Error | null = null;
-//   for (const sel of selectors) {
-//     try {
-//       await page.waitForSelector(sel, { state: "visible", timeout: 3000 });
-//       await page.click(sel, { timeout: 5000 });
-//       logger.debug(`Clicked selector: ${sel}`);
-//       return;
-//     } catch (error) {
-//       lastError = error instanceof Error ? error : new Error(String(error));
-//       logger.debug(`Failed selector ${sel}: ${lastError.message}`);
-//     }
-//   }
-
-//   throw new Error(
-//     `Failed to click any selector: ${selectors.join(", ")}. Last error: ${
-//       lastError?.message || "unknown"
-//     }`
-//   );
-// }
-
 export async function executeStep(page: Page, step: Step): Promise<void> {
   switch (step.action) {
     case "goto": {
@@ -58,7 +25,7 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
       for (const sel of selectors) {
         try {
           await page.waitForSelector(sel, { state: "visible", timeout: 3000 });
-          await page.click(sel, { timeout: 5000 });
+          await page.locator(sel).click({ timeout: 5000 });
           logger.debug(`Clicked: ${sel}`);
           await page.waitForTimeout(1000);
           return;
@@ -75,6 +42,7 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
       const value = step.value ?? "";
 
       if (value === "{Enter}") {
+        await page.waitForTimeout(500);
         await page.keyboard.press("Enter");
         await page.waitForTimeout(500);
         return;
@@ -94,7 +62,7 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
     case "wait": {
       if (step.selector) {
         try {
-          await page.waitForSelector(step.selector, { timeout: 10000 });
+          await page.waitForSelector(step.selector, { timeout: 5000 });
           await page.waitForTimeout(500);
         } catch (error) {
           logger.warn(

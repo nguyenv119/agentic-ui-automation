@@ -40,8 +40,6 @@ export async function computeDomFingerprint(page: Page): Promise<string> {
  */
 export async function shouldCapture(prevHash: string | null, page: Page) {
   const hash = await computeDomFingerprint(page);
-  logger.debug(`Current DOM fingerprint hash: ${hash}`);
-  logger.debug(`Previous DOM fingerprint hash: ${prevHash}`);
   logger.debug(`Changed: ${prevHash !== hash}`);
   return { changed: prevHash !== hash, hash };
 }

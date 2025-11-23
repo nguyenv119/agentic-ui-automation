@@ -58,15 +58,47 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
     await page.waitForTimeout(500);
     
     if (step.expectSelector) {
-      try {
-        await page.waitForSelector(step.expectSelector, {
-          timeout: 5000,
-          state: "visible",
-        });
-      } catch (error) {
+      const rawSelector = step.expectSelector.trim();
+      const selectorCandidates = [
+        rawSelector,
+        ...rawSelector.split(",").map((candidate) => candidate.trim()),
+      ]
+        .filter((candidate) => candidate.length > 0)
+        .reduce<string[]>((acc, candidate) => {
+          if (!acc.includes(candidate)) {
+            acc.push(candidate);
+          }
+          return acc;
+        }, []);
+
+      let expectMatched = false;
+      let lastError: unknown;
+
+      for (const candidate of selectorCandidates) {
+        try {
+          await page.locator(candidate).first().waitFor({
+            timeout: 5000,
+            state: "visible",
+          });
+          expectMatched = true;
+          logger.debug(
+            `[Executor] Step ${step.step} expectSelector satisfied by "${candidate}"`
+          );
+          break;
+        } catch (error) {
+          lastError = error;
+          logger.debug(
+            `[Executor] Step ${step.step} expectSelector candidate failed "${candidate}": ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      }
+
+      if (!expectMatched) {
         logger.warn(
-          `Expected selector not found: ${step.expectSelector}`,
-          error
+          `[Executor] Step ${step.step} expectSelector unmet after ${selectorCandidates.length} candidates: ${rawSelector}`,
+          lastError
         );
       }
     }
@@ -75,7 +107,7 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
     prevHash = hash;
 
     let screenshot: string | undefined;
-    if ((step.capture || changed) && !screenshotHashes.includes(hash)) {
+    if ((changed) && !screenshotHashes.includes(hash)) {
       await page.waitForTimeout(500);
       const filename = `step_${step.step}.png`;
       const screenshotPath = path.join(outputDir, filename);
@@ -94,9 +126,6 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
     logger.debug(`Completed step ${step.step}`);
   }
 
-  logger.info(`Closing browser`);
-  await browser.close();
-
   const workflowPath = path.join(outputDir, "agent_b_workflow.json");
   await fs.writeFile(
     workflowPath,
@@ -104,6 +133,9 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
     "utf-8"
   );
   logger.info(`Workflow saved to ${workflowPath}`);
+
+  logger.info(`Closing browser`);
+  await browser.close();
 
   return { steps: executedSteps };
 }
