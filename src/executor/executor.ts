@@ -49,6 +49,10 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
 
   for (const step of plan.steps) {
     logger.info(`Executing step ${step.step}: ${step.description}`);
+    if (step.step === 1 && step.action === "goto") {
+      await page.goto(step.selector, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1500);
+    }
     
     await executeStep(page, step);
     await page.waitForTimeout(500);

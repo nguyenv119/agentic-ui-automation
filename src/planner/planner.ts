@@ -22,7 +22,7 @@ function extractUrlFromTask(task: string): { url: string; app: string } {
 
   const lower = task.toLowerCase();
   if (lower.includes("notion")) {
-    return { url: "https://www.notion.so", app: "notion" };
+    return { url: "https://www.notion.so/new", app: "notion" };
   }
   if (lower.includes("linear")) {
     return { url: "https://linear.app", app: "linear" };
@@ -31,7 +31,7 @@ function extractUrlFromTask(task: string): { url: string; app: string } {
     return { url: "https://app.asana.com", app: "asana" };
   }
 
-  return { url: "https://www.notion.so", app: "notion" };
+  return { url: "https://www.notion.so/new", app: "notion" };
 }
 
 async function getDocsContext(task: string, app: string): Promise<string> {
@@ -79,11 +79,11 @@ export async function generatePlan(task: string): Promise<Plan> {
 
   const rawContent = res.choices[0].message?.content || "{}";
   const cleanedContent = cleanJsonResponse(rawContent);
-  logger.debug("[Planner] Cleaned JSON content", { cleanedContent });
 
   let json: unknown;
   try {
     json = JSON.parse(cleanedContent);
+    logger.debug("[Planner] JSON parsed successfully", { json });
   } catch (parseError) {
     logger.error("[Planner] Failed to parse JSON from OpenAI response", {
       rawContent,
