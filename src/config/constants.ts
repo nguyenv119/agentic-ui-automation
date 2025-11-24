@@ -376,6 +376,14 @@ Selector rules (Playwright syntax):
 
 - Do NOT invent IDs or class names not present in the dom summary
 - Do NOT output CSS selectors with "text=/.../" patterns
+- CRITICAL: ALWAYS set "selector" to your best match from the DOM
+  - If you cannot find a perfect match, provide multiple fallbackSelectors with decreasing specificity:
+    1. Exact text/aria-label match (most specific)
+    2. Partial text match with role
+    3. Generic role selector (least specific)
+  - Set "selector" to the FIRST (most specific) option
+  - Put the remaining options in "fallbackSelectors"
+  - Only set "selector" to null if absolutely NO element in the DOM could possibly match the goal
 
 Action-specific rules:
 

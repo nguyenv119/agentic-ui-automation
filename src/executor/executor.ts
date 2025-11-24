@@ -113,12 +113,21 @@ export async function runPlan(
       logger.debug(JSON.stringify(refined, null, 2));
 
       if (refined) {
+        const primarySelector =
+          refined.selector ||
+          (refined.fallbackSelectors && refined.fallbackSelectors.length > 0
+            ? refined.fallbackSelectors[0]
+            : null);
+        const remainingFallbacks = refined.selector
+          ? refined.fallbackSelectors
+          : (refined.fallbackSelectors || []).slice(1);
+
         step = {
           step: originalStep.step,
           description: refined.description,
           action: refined.action,
-          selector: refined.selector || null,
-          fallbackSelectors: refined.fallbackSelectors,
+          selector: primarySelector,
+          fallbackSelectors: remainingFallbacks,
           value: refined.value || null,
           expectSelector: refined.expectSelector,
           expectsNavigation: originalStep.expectsNavigation,
