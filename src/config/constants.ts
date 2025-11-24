@@ -64,31 +64,68 @@ Trello, Gmail, Asana, etc). Do NOT hardcode product-specific behaviors.
 Your job is to infer from DOCS_CONTEXT and the task description what entity
 must exist and create it if it is missing.
 
-UNIVERSAL TITLE/NAME FIELD RULE:
+UNIVERSAL TITLE/NAME FIELD RULE (CRITICAL - MUST FOLLOW):
 
-When landing on a creation screen (new page, new email, new board, etc.),
-determine if there is likely a title, name, or subject field that is auto-focused.
+⚠️ VALIDATION CHECK BEFORE GENERATING ANY PLAN:
 
-If YES (common for "new" URLs or blank workspaces):
-  1. First step after goto: Set a simple generic title/name
-     - Type a neutral value like "Demo{Enter}" or "Workspace{Enter}"
-     - This clears the focused field and moves to the body/content area
-  2. Then proceed with the actual task steps (slash commands, clicks, etc.)
+1. Check if START_URL matches these patterns:
+   - Contains "/new" (e.g., notion.so/new, asana.com/new)
+   - Is a base workspace URL (e.g., trello.com/u/, linear.app)
+   - Is a "compose" or "create" page (e.g., mail.google.com/compose)
 
-If NO (e.g., URL points to an existing resource):
-  - Skip title setting, proceed directly with task steps
+2. If YES → MANDATORY TITLE STEP:
+   - The FIRST step after "goto" MUST be a "type" step
+   - This step MUST type a simple title like "Demo{Enter}" or "Workspace{Enter}"
+   - This step's goal MUST mention "title" or "name" or "subject"
+   - Example: goal: "Set a title for the new page"
 
-This rule ensures that slash commands and other input don't get captured
-by title/name fields accidentally.
+3. If NO (URL points to existing resource) → Skip title step
 
-Examples of when to apply this:
-- Notion: notion.so/new → type "Workspace{Enter}" before "/database"
-- Gmail: compose new email → type "Demo{Enter}" in subject before body
-- Trello: create new board → type "Demo Board{Enter}" before adding cards
-- Linear: new project → type "Demo Project{Enter}" before adding issues
+WHY THIS IS CRITICAL:
+When landing on notion.so/new, the page title field is AUTO-FOCUSED.
+If you type "/database{Enter}" directly, it goes into the TITLE field (not the body).
+This breaks the entire workflow because slash commands don't work in titles.
 
-DO NOT apply if the URL already references an existing entity
-(e.g., notion.so/page-id-123, gmail.com/mail/u/0/#inbox/specific-thread).
+The title step MUST come first to:
+1. Clear the auto-focused title field
+2. Move cursor to the body/content area
+3. Allow subsequent slash commands to work correctly
+
+BEFORE YOU GENERATE A PLAN:
+- Look at START_URL
+- If it contains "/new" or is a creation page → ADD TITLE STEP FIRST
+- Do NOT skip this step
+- Do NOT assume the user wants to skip it
+
+Examples:
+
+BAD Plan (will fail):
+{
+  "steps": [
+    {"step": 1, "goal": "Navigate to notion.so/new", "actionHint": "goto"},
+    {"step": 2, "goal": "Create database", "actionHint": "type", "textHint": "/database{Enter}"}
+  ]
+}
+❌ Step 2 types slash command directly in title field - BREAKS!
+
+GOOD Plan (will work):
+{
+  "steps": [
+    {"step": 1, "goal": "Navigate to notion.so/new", "actionHint": "goto"},
+    {"step": 2, "goal": "Set a title for the new page", "actionHint": "type", "textHint": "Demo{Enter}"},
+    {"step": 3, "goal": "Create database", "actionHint": "type", "textHint": "/database{Enter}"}
+  ]
+}
+✓ Step 2 clears title field, Step 3 creates database in body - WORKS!
+
+More examples:
+- notion.so/new → MUST add title step
+- trello.com/u/ → MUST add "Demo Board{Enter}" step
+- mail.google.com/compose → MUST add "Demo{Enter}" in subject step
+- notion.so/page-id-123 → NO title step (existing page)
+- trello.com/b/board-id → NO title step (existing board)
+
+APPLY THIS RULE TO ALL APPS (Notion, Gmail, Trello, Linear, Asana, Monday, etc.)
 
 FOCUS-BEFORE-TYPE RULE:
 
@@ -150,6 +187,75 @@ When setting textHint:
 
 This allows the refiner to match semantic intent with actual DOM elements
 (e.g., matching "database title field" to placeholder="New database").
+
+SEMANTIC BUTTON NAMES RULE:
+
+Documentation often describes UI elements using visual cues like "...", "three dots",
+"hamburger menu", or generic terms. The actual DOM uses semantic aria-labels.
+
+When planning clicks on menu/settings/actions buttons:
+- DON'T use: "...", "three dots", "hamburger icon", "gear icon"
+- DO use semantic intent: "actions button", "settings button", "menu button", "options button"
+
+Examples:
+  * Docs say: "Click the '...' (three dots) to open options"
+    → textHint: "actions button" or "database actions" or "collection menu"
+  * Docs say: "Click the hamburger menu"
+    → textHint: "navigation menu" or "sidebar menu"
+  * Docs say: "Click the gear icon"
+    → textHint: "settings button"
+
+This allows the refiner to match with actual DOM elements like:
+- [aria-label="Actions"]
+- [aria-label="Settings"]
+- [aria-label="Collection actions"]
+- [aria-label="More options"]
+
+NESTED MENU NAVIGATION RULE:
+
+Many UI features are hidden inside nested menus or dialogs that require intermediate clicks to access.
+
+Common patterns requiring intermediate clicks:
+1. Settings/Options menus containing actions:
+   - Click "Settings" or "Options" or "More options" button FIRST
+   - THEN click the specific action inside the menu (e.g., "Filter", "Sort", "Export")
+
+2. Dropdown menus with categories:
+   - Click the dropdown trigger FIRST
+   - THEN click the specific item inside the dropdown
+
+3. Context menus with submenus:
+   - Right-click or click menu button FIRST
+   - THEN click the submenu item
+
+When planning, if a feature is typically nested (like filters, sorts, exports, sharing settings):
+- Step N: Click the parent menu/settings button (textHint: "settings button", "options button", "actions menu")
+- Step N+1: Click the specific feature inside that menu (textHint: "filter", "sort", "export")
+
+Examples:
+  * Task: "Filter a database" or "Add filters"
+    ⚠️ CRITICAL: Filters are INSIDE the Settings menu in Notion databases
+    
+    CORRECT sequence (3 steps):
+    → Step N: Click "Settings" button (textHint: "settings button" or "database settings")
+    → Step N+1: Click "Filter" option inside settings menu (textHint: "filter")
+    → Step N+2: Click "+ Add a filter" button (textHint: "+ Add a filter")
+    
+    WRONG (will fail):
+    ❌ Step N: Click "Filter" directly → Filter button doesn't exist, it's inside Settings!
+    
+    Why this matters: Many database features (Filter, Sort, Group, etc.) are nested inside 
+    the Settings menu. You MUST click Settings first to reveal them.
+
+  * Task: "Share a document"
+    → Step 1: Click share button
+    → Step 2: Click sharing settings or invite option
+
+  * Task: "Export data"
+    → Step 1: Click settings or more options
+    → Step 2: Click export
+
+DO NOT try to click nested items directly - always go through the parent menu first.
 
 STEP DEPENDENCY AND REDUNDANCY RULE:
 
@@ -437,6 +543,73 @@ Examples of when to skip:
 When in doubt: prefer to skip rather than redundantly click. The next step
 will fail gracefully if something was actually needed.
 
+ELLIPSIS AND ICON BUTTON RESOLUTION:
+
+Documentation sometimes uses visual descriptions like "...", "three dots", or icon names
+that don't match the actual DOM aria-labels.
+
+When textHint contains:
+- "..." or "three dots" → Look for [aria-label="Actions"], [aria-label="Settings"], 
+  [aria-label="More options"], [aria-label="Collection actions"]
+- "hamburger" → Look for [aria-label*="menu"], [aria-label*="navigation"]
+- "gear" → Look for [aria-label="Settings"], [aria-label*="settings"]
+
+In database/collection contexts specifically:
+- "..." usually means [aria-label="Collection actions"] or [aria-label="Actions"]
+- "Settings" button opens database configuration (filters, sorts, properties, views)
+- "Collection actions" is for view management and collection-level actions
+
+IMPORTANT: If the semantic plan says to access "Filter" or filtering features,
+this means clicking the "Settings" button, NOT "Collection actions".
+Follow the semantic plan's intent - don't substitute different menus.
+
+Priority order when multiple matches exist:
+1. Most specific to current context (e.g., "Collection actions" for databases)
+2. Most commonly used for the goal (e.g., "Settings" for configuration)
+3. Closest to the active content area
+
+SEMANTIC TEXT MATCHING RULES:
+
+When textHint doesn't exactly match any DOM element, look for SEMANTICALLY EQUIVALENT variants:
+
+ALLOWED substitutions (maintain intent):
+- "Add a filter" → "Add advanced filter" ✓ (same action, just more specific)
+- "Settings" → "Database settings" ✓ (same target, just scoped)
+- "Create" → "Create new" ✓ (same action)
+- "Filter" → "Filter by..." ✓ (same feature)
+
+FORBIDDEN substitutions (change intent):
+- "Add a filter" → "Add property" ✗ (different action target)
+- "Add a filter" → "Add row" ✗ (different action target)
+- "Settings" → "Add settings" ✗ (different action)
+
+CONTEXT VALIDATION:
+Use the step's "goal" description to validate matches:
+- If goal is "add a filter to database" and textHint is "Add a filter"
+  → "Add advanced filter" is valid (contains "filter")
+  → "Add property" is invalid (no "filter" mentioned)
+
+MATCHING STRATEGY:
+1. Try exact textHint match first
+2. If no exact match, look for elements containing:
+   - All KEY WORDS from textHint (e.g., "Add" AND "filter")
+   - Additional qualifiers are OK (e.g., "advanced", "new")
+3. Validate against step goal description
+4. When using adapted text, prioritize it in your selector
+
+Example:
+  textHint: "Add a filter"
+  goal: "Add a filter to the database"
+  DOM has: "Add advanced filter", "Add property", "Add row"
+  
+  Analysis:
+  - "Add advanced filter" → Contains "Add" + "filter" → Valid ✓
+  - "Add property" → Contains "Add" but NOT "filter" → Invalid ✗
+  - "Add row" → Contains "Add" but NOT "filter" → Invalid ✗
+  
+  Result: Use "[aria-label='Add advanced filter']"
+  Note: The refiner will log this adaptation for transparency
+
 Respond with JSON ONLY, no markdown, no comments.
 `;
 
@@ -470,3 +643,34 @@ export const SYSTEM_PROMPT = [
   `2) "Method 1 – ..." with a numbered step list`,
   `3) "Method 2 – ..." (and more methods if truly common), each with numbered steps.`,
 ].join(" ");
+
+export const INFER_PROMPT = `Given this task: "<<TASK>>"
+
+Your job: Determine the BEST starting URL for a UI automation agent to begin this task.
+
+CRITICAL RULES:
+
+1. CREATION/DEMONSTRATION TASKS:
+   - If the task involves creating, making, adding, building, or DEMONSTRATING how to do something (like "how do I...", "filter a database", "add a property")
+   - The agent needs a BLANK WORKSPACE to demonstrate the action
+   - Use the app's "new page" or "blank workspace" URL
+   - Examples:
+     * Linear tasks → https://linear.app (workspace home)
+     * Asana tasks → https://app.asana.com (workspace home)
+
+2. VIEWING/OPENING EXISTING TASKS:
+   - Only use the main URL if the task explicitly mentions opening/viewing an EXISTING specific item
+   - Example: "Open my inbox in Gmail" → https://mail.google.com
+
+3. APP NAME:
+   - Extract as a single lowercase word: "notion", "trello", "linear", "gmail", "asana", "monday"
+
+KEY INSIGHT FOR "HOW DO I..." QUESTIONS:
+When someone asks "How do I filter a database in Notion?", they need to START with a blank workspace where they can CREATE a database first, THEN demonstrate filtering.
+This means: notion.so/new (NOT notion.so/)
+
+Return ONLY valid JSON:
+{
+  "url": "https://...",
+  "app": "appname"
+}`;

@@ -84,6 +84,20 @@ export async function refineStep(
       expectSelector: parsed.expectSelector,
     };
 
+    if (semanticStep.textHint && refined.selector) {
+      const selectorText = refined.selector.match(
+        /(?:text|aria-label|placeholder)=['"](.+?)['"]/
+      );
+      if (selectorText) {
+        const actualText = selectorText[1];
+        if (actualText && actualText !== semanticStep.textHint) {
+          logger.info(
+            `[refineStep] Adapted textHint from "${semanticStep.textHint}" to DOM text "${actualText}" for step ${semanticStep.step}`
+          );
+        }
+      }
+    }
+
     return refined;
   } catch (error) {
     logger.warn(

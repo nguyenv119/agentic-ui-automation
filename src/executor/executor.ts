@@ -52,6 +52,7 @@ export async function runPlan(
   let prevHash: string | null = null;
   const executedSteps: ExecutedStep[] = [];
   const screenshotHashes: string[] = [];
+  let captureIndex = 0;
 
   const recentHistory: Array<{
     step: number;
@@ -185,7 +186,8 @@ export async function runPlan(
     let screenshot: string | undefined;
     if (changed && !screenshotHashes.includes(hash)) {
       await page.waitForTimeout(500);
-      const filename = `step_${step.step}.png`;
+      captureIndex += 1;
+      const filename = `step_${captureIndex}.png`;
       const screenshotPath = path.join(outputDir, filename);
       await takeScreenshot(page, screenshotPath);
       screenshot = filename;
@@ -222,12 +224,19 @@ export async function runPlan(
     logger.debug(`Completed step ${step.step}`);
   }
 
+  const capturedSteps = executedSteps
+    .filter((step) => Boolean(step.screenshot))
+    .map((step, index) => ({
+      ...step,
+      step: index + 1,
+    }));
+
   const workflowPath = path.join(outputDir, "agent_b_workflow.json");
   await fs.writeFile(
     workflowPath,
-    JSON.stringify({ steps: executedSteps }, null, 2),
+    JSON.stringify({ steps: capturedSteps }, null, 2),
     "utf-8"
   );
   logger.info(`Workflow saved to ${workflowPath}`);
-  return { steps: executedSteps };
+  return { steps: capturedSteps };
 }

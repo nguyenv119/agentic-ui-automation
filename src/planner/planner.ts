@@ -6,38 +6,60 @@ import {
   OPENAI_MODEL_DEFAULT,
   SEMANTIC_PLANNER_PROMPT,
   SYSTEM_PROMPT,
+  INFER_PROMPT,
 } from "../config/constants";
 import { cleanJsonResponse } from "../utils/helpers";
 
-function detectAppFromUrl(url: string): string {
-  const lower = url.toLowerCase();
-  if (lower.includes("notion.so")) return "notion";
-  if (lower.includes("linear.app")) return "linear";
-  if (lower.includes("asana.com")) return "asana";
-  return "unknown";
+
+async function inferStartUrlFromTask(task: string): Promise<{ url: string; app: string }> {
+  const openai = getOpenAIClient();
+  
+  const prompt = INFER_PROMPT.replace("<<TASK>>", task);
+
+  const response = await openai.chat.completions.create({
+    model: OPENAI_MODEL_DEFAULT,
+    temperature: 0,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const content = response.choices[0]?.message?.content || "{}";
+  const cleaned = cleanJsonResponse(content);
+  const result = JSON.parse(cleaned);
+  
+  logger.debug(`[inferStartUrlFromTask] LLM inferred: url=${result.url}, app=${result.app}`);
+  
+  return { url: result.url, app: result.app };
 }
 
-function extractUrlFromTask(task: string): { url: string; app: string } {
+function detectAppFromUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname;
+    
+    const parts = hostname.split('.');
+    
+    if (parts.length >= 2) {
+      return parts[parts.length - 2];
+    }
+    
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+function extractUrlFromTask(task: string): { url: string; app: string } | null {
   const urlRegex = /https?:\/\/[^\s]+/g;
   const urls = task.match(urlRegex);
-  if (urls?.length) {
-    const url = urls[0];
-    return { url, app: detectAppFromUrl(url) };
+
+  if (!urls || urls.length === 0) {
+    return null;
   }
 
-  const lower = task.toLowerCase();
-  if (lower.includes("notion")) {
-    return { url: "https://www.notion.so/new", app: "notion" };
-  }
-  if (lower.includes("linear")) {
-    return { url: "https://linear.app", app: "linear" };
-  }
-  if (lower.includes("asana")) {
-    return { url: "https://app.asana.com", app: "asana" };
-  }
-
-  return { url: "https://www.notion.so/new", app: "notion" };
+  const url = urls[0];
+  return { url, app: detectAppFromUrl(url) };
 }
+
 
 async function getDocsContext(task: string, app: string): Promise<string> {
   const openai = getOpenAIClient();
@@ -58,8 +80,22 @@ export async function generatePlan(task: string): Promise<Plan> {
   logger.info(`[Planner] Received task: ${task}`);
   const openai = getOpenAIClient();
 
-  const { url: startUrl, app } = extractUrlFromTask(task);
-  logger.info(`[Planner] Detected app: ${app}, URL: ${startUrl}`);
+  const extractedUrl = extractUrlFromTask(task);
+  
+  let startUrl: string;
+  let app: string;
+  
+  if (extractedUrl) {
+    startUrl = extractedUrl.url;
+    app = extractedUrl.app;
+    logger.info(`[Planner] Extracted URL from task - app: ${app}, URL: ${startUrl}`);
+  } else {
+    logger.info(`[Planner] No explicit URL found, using LLM to infer start URL and app`);
+    const inferred = await inferStartUrlFromTask(task);
+    startUrl = inferred.url;
+    app = inferred.app;
+    logger.info(`[Planner] LLM inferred - app: ${app}, URL: ${startUrl}`);
+  }
 
   const docsContext = await getDocsContext(task, app);
   logger.debug(`[Planner] Docs context received`);
@@ -144,6 +180,11 @@ export async function generatePlan(task: string): Promise<Plan> {
   }
 
   if (stepsToRemove.length > 0) {
+    const removedSteps = stepsToRemove.map(
+      (idx) => `Step ${mappedSteps[idx].step}: ${mappedSteps[idx].description}`
+    );
+    logger.debug(`[Planner] Steps marked for removal: ${removedSteps.join(", ")}`);
+
     mappedSteps = mappedSteps.filter(
       (_, index) => !stepsToRemove.includes(index)
     );
@@ -184,110 +225,4 @@ export async function generatePlan(task: string): Promise<Plan> {
   logger.info("[Planner] Plan generated and mapped successfully");
   logger.debug("[Planner] Plan", JSON.stringify(plan, null, 2));
   return plan;
-
-  // return {
-  //   "app": "notion",
-  //   "task": "How do I make a database in Notion?",
-  //   "metadata": {
-  //     "useLiveRefiner": true
-  //   },
-  //   "steps": [
-  //     {
-  //       "step": 1,
-  //       "description": "Navigate to the Notion new page creation screen",
-  //       "action": "goto",
-  //       "selector": "https://www.notion.so/new",
-  //       "value": null,
-  //       "metadata": {}
-  //     },
-  //     {
-  //       "step": 2,
-  //       "description": "Set a title for the new page to prepare for database creation",
-  //       "action": "type",
-  //       "selector": null,
-  //       "value": "Database{Enter}",
-  //       "metadata": {
-  //         "textHint": "Database{Enter}",
-  //         "targetKind": "input"
-  //       }
-  //     },
-  //     {
-  //       "step": 3,
-  //       "description": "Open the command menu to create a database",
-  //       "action": "type",
-  //       "selector": null,
-  //       "value": "/database{Enter}",
-  //       "metadata": {
-  //         "textHint": "/database{Enter}",
-  //         "targetKind": "input"
-  //       }
-  //     },
-  //     {
-  //       "step": 5,
-  //       "description": "Rename the database to something relevant",
-  //       "action": "type",
-  //       "selector": null,
-  //       "value": "My Database{Enter}",
-  //       "metadata": {
-  //         "textHint": "My Database{Enter}",
-  //         "targetKind": "input"
-  //       }
-  //     },
-  //     {
-  //       "step": 6,
-  //       "description": "Add properties to the database",
-  //       "action": "click",
-  //       "selector": null,
-  //       "value": "+",
-  //       "metadata": {
-  //         "textHint": "+",
-  //         "targetKind": "button"
-  //       }
-  //     },
-  //     {
-  //       "step": 7,
-  //       "description": "Select the type of property to add",
-  //       "action": "click",
-  //       "selector": null,
-  //       "value": "Text",
-  //       "metadata": {
-  //         "textHint": "Text",
-  //         "targetKind": "menuItem"
-  //       }
-  //     },
-  //     {
-  //       "step": 8,
-  //       "description": "Enter a name for the new property",
-  //       "action": "type",
-  //       "selector": null,
-  //       "value": "Description{Enter}",
-  //       "metadata": {
-  //         "textHint": "Description{Enter}",
-  //         "targetKind": "input"
-  //       }
-  //     },
-  //     {
-  //       "step": 9,
-  //       "description": "Start entering data into the database",
-  //       "action": "click",
-  //       "selector": null,
-  //       "value": "Empty cell",
-  //       "metadata": {
-  //         "textHint": "Empty cell",
-  //         "targetKind": "container"
-  //       }
-  //     },
-  //     {
-  //       "step": 10,
-  //       "description": "Add a new row to the database",
-  //       "action": "click",
-  //       "selector": null,
-  //       "value": "+ New",
-  //       "metadata": {
-  //         "textHint": "+ New",
-  //         "targetKind": "button"
-  //       }
-  //     }
-  //   ]
-  // }
 }

@@ -157,7 +157,6 @@ export async function getDomSummary(page: Page): Promise<DomSummary> {
           });
           inputCount++;
         }
-        // don't double-count as clickable
         continue;
       }
 
@@ -177,7 +176,6 @@ export async function getDomSummary(page: Page): Promise<DomSummary> {
           const text = getCleanText(el);
 
           if (!text && !ariaLabel) {
-            // skip totally unlabeled clickables
           } else {
             clickables.push({
               tag,
@@ -196,7 +194,6 @@ export async function getDomSummary(page: Page): Promise<DomSummary> {
         const rect = el.getBoundingClientRect();
         const area = rect.width * rect.height;
 
-        // Only consider reasonably large blocks as containers
         if (area > 5000) {
           const roleLower = (role || "").toLowerCase();
           const looksStructural =
@@ -225,10 +222,6 @@ export async function getDomSummary(page: Page): Promise<DomSummary> {
       containers,
     };
   });
-
-  logger.debug(
-    `[getDomSummary] url=${result.url} clickables=${result.clickables.length} inputs=${result.inputs.length} containers=${result.containers.length}`
-  );
 
   return result;
 }
