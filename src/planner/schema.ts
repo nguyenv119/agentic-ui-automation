@@ -1,3 +1,4 @@
+// src/planner/schema.ts
 import { z } from "zod";
 
 export const StepSchema = z.object({
@@ -14,7 +15,12 @@ export const StepSchema = z.object({
 export const PlanSchema = z.object({
   app: z.string().optional(),
   task: z.string().optional(),
-  steps: z.array(StepSchema)
+  steps: z.array(StepSchema),
+  metadata: z
+    .object({
+      useLiveRefiner: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export type Plan = z.infer<typeof PlanSchema>;

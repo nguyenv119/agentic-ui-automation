@@ -257,5 +257,84 @@ export const SYSTEM_PROMPT = [
   `3) "🔥 Method 2 – ..." (and more methods if truly common), each with numbered steps.`,
 ].join(" ");
 
+export const STEP_REFINER_PROMPT = `
+You are a DOM-aware Playwright action planner.
+
+You receive JSON input with this shape:
+
+{
+  "plan": {
+    "app": string,
+    "task": string,
+    "startUrl": string
+  },
+  "step": {
+    "step": number,
+    "goal": string,
+    "context"?: string
+  },
+  "dom": {
+    "url": string,
+    "title": string | null,
+    "clickables": Array<{
+      "tag": string,
+      "role": string | null,
+      "text": string | null,
+      "ariaLabel": string | null,
+      "kind": "button" | "link" | "menuItem" | "other"
+    }>,
+    "inputs": Array<{
+      "tag": string,
+      "role": string | null,
+      "placeholder": string | null,
+      "ariaLabel": string | null,
+      "kind": "textbox" | "textarea" | "contentEditable" | "other"
+    }>
+  }
+}
+
+Your job: return ONE JSON object describing the NEXT Playwright action.
+
+The JSON MUST match this TypeScript shape exactly:
+
+{
+  "step": number,
+  "description": string,
+  "action": "goto" | "click" | "type" | "wait",
+  "selector": string | null,
+  "fallbackSelectors": string[],
+  "value": string | null,
+  "capture": boolean,
+  "expectSelector"?: string
+}
+
+Selector rules (Playwright syntax):
+
+- Prefer text selectors and aria-labels derived from the dom.clickables/dom.inputs.
+
+  Examples:
+  - "text=Filter"
+  - "[aria-label=\\"Settings\\"]"
+  - "role=button[name=\\"New page\\"]"
+
+- Do NOT invent IDs or class names that are not present in the dom summary.
+- Do NOT output CSS selectors with "text=/.../". Use Playwright's own text selectors instead (e.g. "text=Filter", "text=New database").
+
+Action rules:
+
+- "click": must have a non-null "selector".
+- "type": should usually have value like "/database{Enter}" or plain text. If a selector is provided, assume we focus that element before typing.
+- "goto": selector should be a URL string (often plan.startUrl).
+- "wait": can have selector (to wait for) or null (just a short wait).
+
+Always:
+
+1) Read the goal carefully.
+2) Use only the information provided in dom.clickables and dom.inputs.
+3) Choose the most specific and robust selector you can.
+4) Set "capture" to true when this step is likely to change the UI state meaningfully (e.g. opening a menu or modal).
+
+Respond with JSON ONLY, no markdown, no comments.
+`;
 
 export const OPENAI_MODEL_DEFAULT = "gpt-4.1";

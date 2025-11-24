@@ -1,7 +1,12 @@
+// src/planner/planner.ts
 import { Plan, PlanSchema } from "./schema";
 import { logger } from "../utils/logger";
 import { getOpenAIClient } from "../config/openai";
-import { OPENAI_MODEL_DEFAULT, PLANNER_PROMPT, SYSTEM_PROMPT } from "../config/constants";
+import {
+  OPENAI_MODEL_DEFAULT,
+  PLANNER_PROMPT,
+  SYSTEM_PROMPT,
+} from "../config/constants";
 import { cleanJsonResponse } from "../utils/helpers";
 
 function detectAppFromUrl(url: string): string {
@@ -105,80 +110,66 @@ export async function generatePlan(task: string): Promise<Plan> {
 
   // logger.info("[Planner] Plan generated successfully");
   // return data;
+  const useLiveRefiner = true;
+
   return {
-      "app": "notion",
-      "task": "Filter a database in Notion",
-      "steps": [
-        {
-          "step": 1,
-          "action": "goto",
-          "selector": "https://www.notion.so/new",
-          "description": "Open a new Notion page",
-          "value": null,
-        },
-        {
-          "step": 2,
-          "action": "type",
-          "selector": null,
-          "description": "Type page title 'Demo'",
-          "value": "Demo",
-        },
-        {
-          "step": 3,
-          "action": "type",
-          "selector": null,
-          "description": "Press Enter to move into body",
-          "value": "{Enter}",
-        },
-        {
-          "step": 4,
-          "action": "type",
-          "selector": null,
-          "description": "Insert a database via slash command",
-          "value": "/database",
-        },
-        {
-          "step": 5,
-          "action": "wait",
-          "selector": null,
-          "description": "Wait for slash menu to appear",
-        },
-        {
-          "step": 6,
-          "action": "type",
-          "selector": null,
-          "description": "Press Enter to create the database",
-          "value": "{Enter}",
-        },
-        {
-          "step": 7,
-          "action": "wait",
-          "selector": "[role='table'], [class*='notion-database'], database",
-          "description": "Wait for the database to render",
-        },
-        {
-          "step": 8,
-          "action": "click",
-          "selector": "[aria-label='Settings']",
-          "description": "Open Settings menu for the database",
-          "value": null,
-          "fallbackSelectors": [
-            "[aria-label='Settings']",
-            "button[aria-label*='Settings']",
-          ]
-        },
-        {
-          "step": 9,
-          "action": "click",
-          "selector": "[aria-label='Filter']",
-          "description": "Open Filter menu for the database",
-          "value": null,
-          "fallbackSelectors": [
-            "text=Filter",
-            "div:has-text('Filter')",
-            "role=button[name='Filter']"
-          ]
-        }
-      ]
-    }
-  }
+    app: "notion",
+    task: "Filter a database in Notion",
+    metadata: {
+      useLiveRefiner: useLiveRefiner,
+    },
+    steps: [
+      {
+        step: 1,
+        action: "goto",
+        selector: "https://www.notion.so/new",
+        description: "Open a new Notion page",
+        value: null,
+      },
+      {
+        step: 2,
+        action: "type",
+        selector: null,
+        description: "Type page title 'Demo'",
+        value: "Demo{Enter}",
+      },
+      {
+        step: 3,
+        action: "type",
+        selector: null,
+        description: "Insert a database via slash command and create it",
+        value: "/database{Enter}",
+      },
+      {
+        step: 4,
+        action: "wait",
+        selector:
+          "[role='table'], [class*='notion-database'], [class*='notion-table-view'], database",
+        description: "Wait for the database to render",
+      },
+      {
+        step: 5,
+        action: "click",
+        selector: "[aria-label='Settings']",
+        description: "Open Settings menu for the database",
+        value: null,
+        fallbackSelectors: [
+          "[aria-label='Settings']",
+          "button[aria-label*='Settings']",
+        ],
+      },
+      {
+        step: 6,
+        action: "click",
+        selector: "[aria-label='Filter']",
+        description: "Open Filter menu for the database",
+        value: null,
+        fallbackSelectors: [
+          "text=Filter",
+          "div:has-text('Filter')",
+          "role=button[name='Filter']",
+        ],
+      },
+    ],
+  };
+}

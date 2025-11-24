@@ -1,13 +1,16 @@
+// src/executor/executor.ts
 import path from "path";
 import fs from "fs/promises";
 import { chromium } from "playwright";
-import { Plan } from "../planner/schema";
+import { Plan, Step } from "../planner/schema";
 import { shouldCapture } from "../state/stateTracker";
 import { takeScreenshot } from "../state/screenshot";
 import { executeStep } from "./actions";
 import { logger } from "../utils/logger";
 import { detectAppFromUrl } from "../auth/appDetector";
 import { loadStorageState } from "../auth/storage";
+import { getDomSummary } from "./domSummary";
+import { refineStep, SemanticStep } from "../planner/stepRefiner";
 
 export type ExecutedStep = {
   step: number;
@@ -16,7 +19,10 @@ export type ExecutedStep = {
   screenshot?: string;
 };
 
-export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: ExecutedStep[] }> {
+export async function runPlan(
+  plan: Plan,
+  outputDir: string
+): Promise<{ steps: ExecutedStep[] }> {
   const firstStep = plan.steps[0];
   if (!firstStep || firstStep.action !== "goto" || !firstStep.selector) {
     throw new Error("Plan must start with a goto step containing a URL");
@@ -47,31 +53,76 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
   const executedSteps: ExecutedStep[] = [];
   const screenshotHashes: string[] = [];
 
-  for (const step of plan.steps) {
+  const planMetadataForRefiner = {
+    app: plan.app || "unknown",
+    task: plan.task || "unknown",
+    startUrl: plan.steps[0]?.selector || "",
+  };
+
+  for (const originalStep of plan.steps) {
+    let step = originalStep;
+    let expectMatched = false;
+
+    const domSummary = await getDomSummary(page);
+    
+    try {
+      const domSummaryPath = path.join(outputDir, `domSummary_${step.step}.json`);
+      await fs.writeFile(domSummaryPath, JSON.stringify(domSummary, null, 2), "utf-8");
+    } catch (err) {
+      logger.warn(`[runPlan] Failed to save DOM summary for step ${step.step}`, err);
+    }
+
+    const semanticStep: SemanticStep = {
+      step: originalStep.step,
+      goal: originalStep.description,
+    };
+
+    logger.debug(`[runPlan] Original step`);
+    logger.debug(JSON.stringify(originalStep, null, 2));
+    if (step.action === "click" || step.action === "wait") {
+      const refined = await refineStep(
+        planMetadataForRefiner,
+        semanticStep,
+        domSummary
+      );
+      logger.debug(`[runPlan] Refined step`);
+      logger.debug(JSON.stringify(refined, null, 2));
+
+      if (refined) {
+        step = {
+          step: originalStep.step,
+          description: refined.description,
+          action: refined.action,
+          selector: refined.selector || null,
+          fallbackSelectors: refined.fallbackSelectors,
+          value: refined.value || null,
+          expectSelector: refined.expectSelector,
+          expectsNavigation: originalStep.expectsNavigation,
+        };
+      } else {
+        logger.debug(
+          `[runPlan] No refinement found for step ${originalStep.step}`
+        );
+      }
+    }
+
     logger.info(`Executing step ${step.step}: ${step.description}`);
-    if (step.step === 1 && step.action === "goto") {
+
+    if (step.step === 1 && step.action === "goto" && step.selector) {
       await page.goto(step.selector, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(1500);
     }
-    
+
     await executeStep(page, step);
     await page.waitForTimeout(500);
-    
+
     if (step.expectSelector) {
       const rawSelector = step.expectSelector.trim();
       const selectorCandidates = [
         rawSelector,
         ...rawSelector.split(",").map((candidate) => candidate.trim()),
-      ]
-        .filter((candidate) => candidate.length > 0)
-        .reduce<string[]>((acc, candidate) => {
-          if (!acc.includes(candidate)) {
-            acc.push(candidate);
-          }
-          return acc;
-        }, []);
+      ].filter((candidate) => candidate.length > 0);
 
-      let expectMatched = false;
       let lastError: unknown;
 
       for (const candidate of selectorCandidates) {
@@ -88,7 +139,9 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
         } catch (error) {
           lastError = error;
           logger.debug(
-            `[Executor] Step ${step.step} expectSelector candidate failed "${candidate}": ${
+            `[Executor] Step ${
+              step.step
+            } expectSelector candidate failed "${candidate}": ${
               error instanceof Error ? error.message : String(error)
             }`
           );
@@ -107,13 +160,24 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
     prevHash = hash;
 
     let screenshot: string | undefined;
-    if ((changed) && !screenshotHashes.includes(hash)) {
+    if (changed && !screenshotHashes.includes(hash)) {
       await page.waitForTimeout(500);
       const filename = `step_${step.step}.png`;
       const screenshotPath = path.join(outputDir, filename);
       await takeScreenshot(page, screenshotPath);
       screenshot = filename;
       screenshotHashes.push(hash);
+    } else if (
+      !changed &&
+      step.action !== "wait" &&
+      !expectMatched &&
+      step.expectSelector
+    ) {
+      logger.debug(
+        `[Executor] Step ${step.step} did not change. Retrying the original step`
+      );
+      step = originalStep;
+      await executeStep(page, step);
     }
 
     executedSteps.push({
@@ -122,7 +186,7 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
       action: step.action,
       screenshot,
     });
-    
+
     logger.debug(`Completed step ${step.step}`);
   }
 
@@ -133,9 +197,5 @@ export async function runPlan(plan: Plan, outputDir: string): Promise<{ steps: E
     "utf-8"
   );
   logger.info(`Workflow saved to ${workflowPath}`);
-
-  logger.info(`Closing browser`);
-  await browser.close();
-
   return { steps: executedSteps };
 }

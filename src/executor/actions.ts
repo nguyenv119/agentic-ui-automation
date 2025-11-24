@@ -18,9 +18,12 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
       if (!step.selector) {
         throw new Error("Click step requires a selector");
       }
-      
-      const selectors = [step.selector, ...(step.fallbackSelectors || [])].filter(Boolean) as string[];
-      
+
+      const selectors = [
+        step.selector,
+        ...(step.fallbackSelectors || []),
+      ].filter(Boolean) as string[];
+
       let lastError: Error | null = null;
       for (const sel of selectors) {
         try {
@@ -34,27 +37,42 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
           logger.debug(`Failed to click ${sel}: ${lastError.message}`);
         }
       }
-      
+
       throw new Error(`Failed to click: ${selectors.join(", ")}`);
     }
 
     case "type": {
       const value = step.value ?? "";
 
-      if (value === "{Enter}") {
-        await page.waitForTimeout(500);
-        await page.keyboard.press("Enter");
-        await page.waitForTimeout(500);
-        return;
+      if (step.selector) {
+        try {
+          await page.waitForSelector(step.selector, { timeout: 3000 });
+          await page.click(step.selector);
+          await page.waitForTimeout(200);
+        } catch (e) {
+          logger.warn(
+            `Could not click selector ${step.selector} before typing. attempting to type anyway.`
+          );
+        }
       }
 
-      if (step.selector) {
-        await page.waitForSelector(step.selector, { timeout: 3000 });
-        await page.click(step.selector);
-        await page.waitForTimeout(200);
+      if (value.includes("{Enter}")) {
+        const parts = value.split("{Enter}");
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (part) {
+            await page.keyboard.type(part, { delay: 80 });
+          }
+          if (i < parts.length - 1) {
+            await page.waitForTimeout(200);
+            await page.keyboard.press("Enter");
+            await page.waitForTimeout(200);
+          }
+        }
+      } else {
+        await page.keyboard.type(value, { delay: 80 });
       }
-      
-      await page.keyboard.type(value, { delay: 80 });
+
       await page.waitForTimeout(500);
       return;
     }
