@@ -2,7 +2,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { chromium } from "playwright";
-import { Plan, Step } from "../planner/schema";
+import { Plan, Step, SemanticStep } from "../planner/schema";
 import { shouldCapture } from "../state/stateTracker";
 import { takeScreenshot } from "../state/screenshot";
 import { executeStep } from "./actions";
@@ -10,7 +10,7 @@ import { logger } from "../utils/logger";
 import { detectAppFromUrl } from "../auth/appDetector";
 import { loadStorageState } from "../auth/storage";
 import { getDomSummary } from "./domSummary";
-import { refineStep, SemanticStep } from "../planner/stepRefiner";
+import { refineStep } from "../planner/stepRefiner";
 
 export type ExecutedStep = {
   step: number;
@@ -53,6 +53,12 @@ export async function runPlan(
   const executedSteps: ExecutedStep[] = [];
   const screenshotHashes: string[] = [];
 
+  const recentHistory: Array<{
+    step: number;
+    action: string;
+    description: string;
+  }> = [];
+
   const planMetadataForRefiner = {
     app: plan.app || "unknown",
     task: plan.task || "unknown",
@@ -64,24 +70,41 @@ export async function runPlan(
     let expectMatched = false;
 
     const domSummary = await getDomSummary(page);
-    
+
     try {
-      const domSummaryPath = path.join(outputDir, `domSummary_${step.step}.json`);
-      await fs.writeFile(domSummaryPath, JSON.stringify(domSummary, null, 2), "utf-8");
+      const domSummaryPath = path.join(
+        outputDir,
+        `domSummary_${step.step}.json`
+      );
+      await fs.writeFile(
+        domSummaryPath,
+        JSON.stringify(domSummary, null, 2),
+        "utf-8"
+      );
     } catch (err) {
-      logger.warn(`[runPlan] Failed to save DOM summary for step ${step.step}`, err);
+      logger.warn(
+        `[runPlan] Failed to save DOM summary for step ${step.step}`,
+        err
+      );
     }
 
     const semanticStep: SemanticStep = {
       step: originalStep.step,
       goal: originalStep.description,
+      actionHint: originalStep.action,
+      textHint: originalStep.metadata?.textHint,
+      targetKind: originalStep.metadata?.targetKind,
+      waitForHint: originalStep.metadata?.waitForHint,
     };
 
     logger.debug(`[runPlan] Original step`);
     logger.debug(JSON.stringify(originalStep, null, 2));
     if (step.action === "click" || step.action === "wait") {
       const refined = await refineStep(
-        planMetadataForRefiner,
+        {
+          ...planMetadataForRefiner,
+          previousSteps: recentHistory.length > 0 ? recentHistory : undefined,
+        },
         semanticStep,
         domSummary
       );
@@ -110,11 +133,11 @@ export async function runPlan(
 
     if (step.step === 1 && step.action === "goto" && step.selector) {
       await page.goto(step.selector, { waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(3000);
     }
 
     await executeStep(page, step);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(2000);
 
     if (step.expectSelector) {
       const rawSelector = step.expectSelector.trim();
@@ -186,6 +209,15 @@ export async function runPlan(
       action: step.action,
       screenshot,
     });
+
+    recentHistory.push({
+      step: step.step,
+      action: step.action,
+      description: step.description,
+    });
+    if (recentHistory.length > 3) {
+      recentHistory.shift();
+    }
 
     logger.debug(`Completed step ${step.step}`);
   }

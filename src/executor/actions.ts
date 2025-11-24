@@ -31,6 +31,10 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
           await page.locator(sel).click({ timeout: 5000 });
           logger.debug(`Clicked: ${sel}`);
           await page.waitForTimeout(1000);
+          
+          if (step.metadata?.targetKind === "button" || step.description.toLowerCase().includes("add property")) {
+            await page.waitForTimeout(500);
+          }
           return;
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
@@ -38,44 +42,74 @@ export async function executeStep(page: Page, step: Step): Promise<void> {
         }
       }
 
-      throw new Error(`Failed to click: ${selectors.join(", ")}`);
+      logger.warn(
+        `[executeStep] Failed to click after trying all selectors: ${selectors.join(", ")}. Continuing anyway as this may not be critical.`
+      );
+      return;
     }
 
     case "type": {
       const value = step.value ?? "";
-
-      if (step.selector) {
+      const locator = step.selector ? page.locator(step.selector) : null;
+    
+      if (locator) {
         try {
-          await page.waitForSelector(step.selector, { timeout: 3000 });
-          await page.click(step.selector);
+          await locator.waitFor({ state: "visible", timeout: 3000 });
+          await locator.click();
           await page.waitForTimeout(200);
         } catch (e) {
           logger.warn(
-            `Could not click selector ${step.selector} before typing. attempting to type anyway.`
+            `Could not click selector ${step.selector} before typing. Attempting to type anyway.`
           );
         }
-      }
-
-      if (value.includes("{Enter}")) {
-        const parts = value.split("{Enter}");
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i];
-          if (part) {
-            await page.keyboard.type(part, { delay: 80 });
-          }
-          if (i < parts.length - 1) {
-            await page.waitForTimeout(200);
-            await page.keyboard.press("Enter");
-            await page.waitForTimeout(200);
-          }
-        }
       } else {
-        await page.keyboard.type(value, { delay: 80 });
+        logger.debug(
+          "No selector for type step; typing into currently focused element."
+        );
       }
-
+    
+      const specialKeyPattern =
+        /\{(Enter|Tab|Escape|Backspace|Delete|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)\}/g;
+      const segments: Array<{ text?: string; key?: string }> = [];
+    
+      let lastIndex = 0;
+      let match;
+      while ((match = specialKeyPattern.exec(value)) !== null) {
+        if (match.index > lastIndex) {
+          segments.push({ text: value.substring(lastIndex, match.index) });
+        }
+        segments.push({ key: match[1] });
+        lastIndex = match.index + match[0].length;
+      }
+      if (lastIndex < value.length) {
+        segments.push({ text: value.substring(lastIndex) });
+      }
+      if (segments.length === 0 && value) {
+        segments.push({ text: value });
+      }
+    
+      for (const segment of segments) {
+        if (segment.text) {
+          if (locator) {
+            await locator.pressSequentially(segment.text, { delay: 80 });
+          } else {
+            await page.keyboard.type(segment.text, { delay: 80 });
+          }
+        } else if (segment.key) {
+          await page.waitForTimeout(200);
+          if (locator) {
+            await locator.press(segment.key);
+          } else {
+            await page.keyboard.press(segment.key);
+          }
+          await page.waitForTimeout(200);
+        }
+      }
+    
       await page.waitForTimeout(500);
       return;
     }
+    
 
     case "wait": {
       if (step.selector) {

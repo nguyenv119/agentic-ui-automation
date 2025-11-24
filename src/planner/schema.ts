@@ -10,6 +10,15 @@ export const StepSchema = z.object({
   value: z.string().nullable().optional(),
   expectsNavigation: z.boolean().optional(),
   expectSelector: z.string().optional(),
+  metadata: z
+    .object({
+      textHint: z.string().nullable().optional(),
+      targetKind: z
+        .enum(["button", "input", "menuItem", "container", "other"])
+        .optional(),
+      waitForHint: z.string().nullable().optional(),
+    })
+    .optional(),
 });
 
 export const PlanSchema = z.object({
@@ -25,3 +34,20 @@ export const PlanSchema = z.object({
 
 export type Plan = z.infer<typeof PlanSchema>;
 export type Step = z.infer<typeof StepSchema>;
+
+// Semantic Planner Types (Internal use for LLM generation)
+export interface SemanticStep {
+  step: number;
+  goal: string; // natural language
+  actionHint?: "goto" | "click" | "type" | "wait";
+  textHint?: string | null; // label or text we expect to interact with
+  targetKind?: "button" | "input" | "menuItem" | "container" | "other";
+  waitForHint?: string | null; // hint about what to wait for (e.g. "table element", "settings button")
+}
+
+export interface SemanticPlan {
+  app: string;
+  task: string;
+  startUrl: string;
+  steps: SemanticStep[];
+}

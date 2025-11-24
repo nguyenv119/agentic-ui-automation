@@ -5,6 +5,7 @@ import { getOpenAIClient } from "../config/openai";
 import { STEP_REFINER_PROMPT } from "../config/constants";
 import { OPENAI_MODEL_DEFAULT } from "../config/constants";
 import { cleanJsonResponse } from "../utils/helpers";
+import { SemanticStep } from "./schema";
 
 export type RefinedActionType = "goto" | "click" | "type" | "wait";
 
@@ -23,12 +24,7 @@ export interface PlanMetadataForRefiner {
   app: string;
   task: string;
   startUrl: string;
-}
-
-export interface SemanticStep {
-  step: number;
-  goal: string;
-  context?: string;
+  previousSteps?: Array<{step: number; action: string; description: string}>;
 }
 
 export async function refineStep(
@@ -40,33 +36,12 @@ export async function refineStep(
     `[refineStep] Refining step ${semanticStep.step}: "${semanticStep.goal}"`
   );
 
-  if (semanticStep.step === 1) {
-    logger.debug(
-      `[refineStep] Step 1 detected, returning deterministic goto to ${planMetadata.startUrl}`
-    );
-    return {
-      step: semanticStep.step,
-      description: "Navigate to the workspace start URL via refiner.",
-      action: "goto",
-      selector: planMetadata.startUrl,
-      fallbackSelectors: [],
-      value: null,
-      capture: false,
-    };
-  }
-
   const client = getOpenAIClient();
   const inputPayload = {
     plan: planMetadata,
     step: semanticStep,
     dom: domSummary,
   };
-
-  //   logger.debug(
-  //     `[refineStep] Sending payload to STEP_REFINER LLM: ${JSON.stringify(
-  //       inputPayload
-  //     ).slice(0, 4000)}`
-  //   );
 
   try {
     const response = await client.chat.completions.create({
@@ -87,10 +62,6 @@ export async function refineStep(
     const rawText = response.choices[0].message?.content ?? "{}";
 
     const cleanedContent = cleanJsonResponse(rawText);
-    // logger.debug(
-    //   `[refineStep] Cleaned JSON content: ${cleanedContent.slice(0, 4000)}`
-    // );
-
     const parsed = JSON.parse(cleanedContent) as RefinedStep;
 
     if (
