@@ -8,7 +8,7 @@ Ask it “how do I create a list in a Trello board?”
 …and the system will:
 1. Interpret the instruction via a Semantic Planner LLM
 2. Navigate a real browser using Playwright
-3. Dynamically inspect and extrapolate meaningful the live DOM between steps
+3. Dynamically inspect and extrapolate meaningful info from the DOM, live, between steps
 4. Refine the plan into exact click / type / wait actions
 5. Capture screenshots for every semantic UI state
 6. Write a fully-structured dataset of the workflow
